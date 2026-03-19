@@ -1,8 +1,13 @@
 {
   "manifest_version": 3,
   "name": "JPDB ImmersionKit",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "ImmersionKit examples on jpdb.io",
+  "host_permissions": [
+    "https://jpdb.io/*",
+    "https://apiv2.immersionkit.com/*",
+    "https://us-southeast-1.linodeobjects.com/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://jpdb.io/*"],
