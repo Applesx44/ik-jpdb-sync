@@ -28,7 +28,7 @@ function parseVocab() {
   // e.g. /review?c=vf%2C1588410%2C2751011542&r=6#a
   //
   // JPDB renders kanji like this:
-  //   <ruby>食べる<rt>たべる</rt></ruby>
+  //    <ruby>食べる<rt>たべる</rt></ruby>
   //
   // The problem: element.textContent gives "食べるたべる" (kanji + furigana mashed together)
   // The fix: clone the element, remove all <rt> tags, THEN read textContent
@@ -69,6 +69,68 @@ async function fetchExamples(vocab) {
 
   const json = await res.json();
 
-  console.log("[IK] Raw first example:", json.examples?.[0]);
-  return json.examples || [];
+  // ImmersionKit API v2 wraps results in a data array
+  const examples = json.data?.[0]?.examples || [];
+  console.log("[IK] Raw first example:", examples[0]);
+  return examples;
 }
+
+const MEDIA_BASE =
+  "https://us-southeast-1.linodeobjects.com/immersionkit/media";
+
+let titleMap = null; // here we init title map which gonna hold meta data about titles to fetch data by anime etc {"hunter_hunter": "Hunter x Hunter}
+
+async function loadTitleMap() {
+  if (titleMap) return; //if we got titlemap before reuse
+  const res = await fetch("https://apiv2.immersionkit.com/index_meta"); // here we fetch the meta data
+
+  const json = await res.json();
+
+  titleMap = {};
+  for (const [slug, entry] of Object.entries(json.data)) {
+    titleMap[slug] = entry.title || slug; // we iterate over map and make url slug = actual entry name else use slug = slug
+  }
+  console.log("[IK] Title map loaded", Object.keys(titleMap).length, "entries"); // we can use length of titlemap to shwo how many examples we have later (maybe)
+}
+
+function buildMediaUrl(category, titleSlug, filename) {
+  // the browser auto encode underscores and and spaces so we dont have to use encoding
+  if (!filename) return null;
+  const displayTitle = titleMap?.[titleSlug] || titleSlug;
+  // the pattern is https://us-southeast-1.linodeobjects.com/immersionkit/media/anime/Your%20Name/media/Anime_-_YourName_1_0.31.52.115.jpg .../title/media/
+  return `${MEDIA_BASE}/${category}/${encodeURIComponent(displayTitle)}/media/${filename}`;
+}
+
+function getImageUrl(ex) {
+  const category = ex.media || ex.id?.split("_")[0] || "anime";
+  return buildMediaUrl(category, ex.deck_name || ex.title, ex.image);
+}
+
+function getSoundUrl(ex) {
+  const category = ex.media || ex.id?.split("_")[0] || "anime";
+  return buildMediaUrl(category, ex.deck_name || ex.title, ex.sound);
+}
+
+async function main() {
+  const vocab = parseVocab();
+  if (!vocab) return;
+
+  try {
+    const [examples] = await Promise.all([
+      fetchExamples(vocab),
+      loadTitleMap(),
+    ]);
+
+    if (examples.length > 0) {
+      const imageUrl = getImageUrl(examples[0]);
+      const soundUrl = getSoundUrl(examples[0]);
+      console.log("[IK] Image URL:", imageUrl);
+      console.log("[IK] Sound URL:", soundUrl);
+      // paste the image URL in a new tab to verify it loads
+    }
+  } catch (e) {
+    console.error("[IK] Error:", e);
+  }
+}
+
+main();
