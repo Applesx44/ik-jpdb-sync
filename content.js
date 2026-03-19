@@ -111,6 +111,25 @@ function getSoundUrl(ex) {
   return buildMediaUrl(category, ex.deck_name || ex.title, ex.sound);
 }
 
+function buildWidget(ex, index, total, titleMap) {
+  const widget = document.createElement("div");
+  widget.id = "ik-widget";
+  widget.style.cssText =
+    "text-align:center; margin:20px; padding:10px; background:#222; border-radius:8px;";
+
+  const img = document.createElement("img");
+  const displayTitle = titleMap[ex.deck_name] || ex.deck_name;
+  img.src = `https://us-southeast-1.linodeobjects.com/immersionkit/media/anime/${encodeURIComponent(displayTitle)}/media/${ex.image}`;
+  img.style.cssText = "max-width:100%; border-radius:4px;";
+  img.onerror = () => img.remove();
+
+  const text = document.createElement("div");
+  text.textContent = ex.sentence;
+  text.style.cssText = "color:white; margin-top:10px; font-size:1.1em;";
+
+  widget.append(img, text);
+  return widget;
+}
 async function main() {
   const vocab = parseVocab();
   if (!vocab) return;
