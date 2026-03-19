@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "JPDB ImmersionKit",
+  "version": "0.1.0",
+  "description": "ImmersionKit examples on jpdb.io",
+  "content_scripts": [
+    {
+      "matches": ["https://jpdb.io/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
