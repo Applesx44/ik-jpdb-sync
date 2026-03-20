@@ -1,221 +1,191 @@
-console.log("[IK] Extension loaded on:", window.location.href);
-
 function parseVocab() {
-  const url = window.location.href;
+  const currentPageUrl = window.location.href;
+  console.log("[IK] Scanning page:", currentPageUrl);
 
-  // vocabulary page — word is in the URL itself, easiest case
-  // e.g. /vocabulary/1289480/食#a
-  if (url.includes("/vocabulary/")) {
-    const match = url.match(/\/vocabulary\/\d+\/([^#/?]*)/);
-    if (match) return decodeURIComponent(match[1]);
+  if (currentPageUrl.includes("/vocabulary/")) {
+    const vocabUrlPattern = /\/vocabulary\/\d+\/([^#/?]*)/;
+    const urlMatchResult = currentPageUrl.match(vocabUrlPattern);
+
+    if (urlMatchResult) {
+      const encodedWordFromUrl = urlMatchResult[1];
+      const cleanJapaneseWord = decodeURIComponent(encodedWordFromUrl);
+
+      console.log(
+        "[IK] Vocabulary page match:",
+        encodedWordFromUrl,
+        "->",
+        cleanJapaneseWord,
+      );
+      return cleanJapaneseWord;
+    }
   }
 
-  // kanji page — same idea, word is in the URL
-  // ex /kanji/1234/食#a
-  if (url.includes("/kanji/")) {
-    const match = url.match(/\/kanji\/\d+\/([^#/?]*)/);
-    if (match) return decodeURIComponent(match[1]).split("/")[0];
+  if (currentPageUrl.includes("/kanji/")) {
+    const kanjiUrlPattern = /\/kanji\/\d+\/([^#/?]*)/;
+    const urlMatchResult = currentPageUrl.match(kanjiUrlPattern);
+
+    if (urlMatchResult) {
+      const rawKanjiString = urlMatchResult[1];
+      const cleanKanji = decodeURIComponent(rawKanjiString).split("/")[0];
+
+      console.log("[IK] Kanji page match:", rawKanjiString, "->", cleanKanji);
+      return cleanKanji;
+    }
   }
 
-  // search page — word is in the query string
-  // ex /search?q=食べる
-  if (url.includes("/search?q=")) {
-    const match = url.match(/\/search\?q=([^&]*)/);
-    if (match) return decodeURIComponent(match[1]);
-  }
+  if (currentPageUrl.includes("/review") || currentPageUrl.includes("c=")) {
+    console.log("[IK] Review/Exercise session detected. Searching DOM...");
 
-  // review page — word is NOT in the URL, it's in the DOM
-  // e.g. /review?c=vf%2C1588410%2C2751011542&r=6#a
-  //
-  // JPDB renders kanji like this:
-  //    <ruby>食べる<rt>たべる</rt></ruby>
-  //
-  // The problem: element.textContent gives "食べるたべる" (kanji + furigana mashed together)
-  // The fix: clone the element, remove all <rt> tags, THEN read textContent
-  if (/\/review/.test(url) || url.includes("c=")) {
-    // Option 1 (most reliable): the vocab anchor link always has the clean word in its href
-    const links = document.querySelectorAll(
+    const mainWordElement = document.querySelector(".plain");
+    if (mainWordElement) {
+      const offlineElementClone = mainWordElement.cloneNode(true);
+      const furiganaTags = offlineElementClone.querySelectorAll("rt, rp");
+
+      console.log(
+        "[IK] Found",
+        furiganaTags.length,
+        "furigana tags to remove.",
+      );
+
+      furiganaTags.forEach((tag) => tag.remove());
+      const extractedText = offlineElementClone.textContent.trim();
+
+      console.log("[IK] DOM Extraction Result:", extractedText);
+      return extractedText;
+    }
+
+    const navigationLinks = document.querySelectorAll(
       'a[href*="/vocabulary/"], a[href*="/kanji/"]',
     );
-    for (const link of links) {
-      const href = link.getAttribute("href");
-      const match = href.match(/\/(vocabulary|kanji)\/\d+\/([^#?]*)/);
-      if (match?.[2]) return decodeURIComponent(match[2]);
-    }
+    console.log(
+      "[IK] No .plain element. Checking",
+      navigationLinks.length,
+      "links as fallback.",
+    );
 
-    // Option 2 (fallback): read .plain element but strip furigana first
-    const plainEl = document.querySelector(".plain");
-    if (plainEl) {
-      const clone = plainEl.cloneNode(true); // copy, don't touch the real page
-      clone.querySelectorAll("rt, rp").forEach((n) => n.remove()); // remove furigana
-      const text = clone.textContent.trim();
-      if (text) return text;
+    for (const link of navigationLinks) {
+      const linkHref = link.getAttribute("href");
+      const linkPattern = /\/(vocabulary|kanji)\/\d+\/([^#?]*)/;
+      const linkMatchResult = linkHref.match(linkPattern);
+
+      if (linkMatchResult && linkMatchResult[2]) {
+        const decodedWordFromLink = decodeURIComponent(linkMatchResult[2]);
+        console.log("[IK] Word recovered from link:", decodedWordFromLink);
+        return decodedWordFromLink;
+      }
     }
   }
 
-  return ""; // nothing found on this page type
+  console.warn("[IK] Scraper could not identify a Japanese word on this page.");
+  return "";
 }
 
-// run it and log the result so we can verify
-const vocab = parseVocab(); // the actual highlighted vocab
-console.log("[IK] Parsed vocab:", vocab); // making sure if it really exists
-
-async function fetchExamples(vocab) {
-  const url = `https://apiv2.immersionkit.com/search?q=${encodeURIComponent(vocab)}&sort=sentence_length:asc&limit=50`;
-  console.log("[IK] Fetching:", url);
-
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-
-  const json = await res.json();
-
-  //use json.data.[0] instead
-  const examples = json.data?.[0]?.examples || [];
-
-  if (examples.length > 0) {
-    console.log("[IK] Found examples:", examples.length);
-    console.log("[IK] Raw first example:", examples[0]);
-  } else {
-    console.log("[IK] No examples found in the data array.");
-  }
-
-  return examples;
-}
-
-const MEDIA_BASE =
+const MEDIA_REPOSITORY_BASE =
   "https://us-southeast-1.linodeobjects.com/immersionkit/media";
 
-let titleMap = null; // here we init title map which gonna hold meta data about titles to fetch data by anime etc {"hunter_hunter": "Hunter x Hunter}
+let globalTitleMetadataMap = null;
 
-async function loadTitleMap() {
-  if (titleMap) return; //if we got titlemap before reuse
-  const res = await fetch("https://apiv2.immersionkit.com/index_meta"); // here we fetch the meta data
+async function loadTitleMetadataMap() {
+  if (globalTitleMetadataMap) return globalTitleMetadataMap;
 
-  const json = await res.json();
+  try {
+    const metadataResponse = await fetch(
+      "https://apiv2.immersionkit.com/index_meta",
+    );
+    const metadataJson = await metadataResponse.json();
 
-  titleMap = {};
-  for (const [slug, entry] of Object.entries(json.data)) {
-    titleMap[slug] = entry.title || slug; // we iterate over map and make url slug = actual entry name else use slug = slug
-  }
-  console.log("[IK] Title map loaded", Object.keys(titleMap).length, "entries"); // we can use length of titlemap to shwo how many examples we have later (maybe)
-}
-
-function buildMediaUrl(category, titleSlug, filename) {
-  // the browser auto encode underscores and and spaces so we dont have to use encoding
-  if (!filename) return null;
-  const displayTitle = titleMap?.[titleSlug] || titleSlug;
-  // the pattern is https://us-southeast-1.linodeobjects.com/immersionkit/media/anime/Your%20Name/media/Anime_-_YourName_1_0.31.52.115.jpg .../title/media/
-  return `${MEDIA_BASE}/${category}/${encodeURIComponent(displayTitle)}/media/${filename}`;
-}
-
-function getImageUrl(ex) {
-  const category = ex.media || ex.id?.split("_")[0] || "anime";
-  return buildMediaUrl(category, ex.deck_name || ex.title, ex.image);
-}
-
-function getSoundUrl(ex) {
-  const category = ex.media || ex.id?.split("_")[0] || "anime";
-  return buildMediaUrl(category, ex.deck_name || ex.title, ex.sound);
-}
-
-function buildWidget(ex, index, total) {
-  const widget = document.createElement("div");
-  widget.id = "ik-widget";
-  widget.style.cssText =
-    "text-align:center; margin:20px; padding:10px; background:#222; border-radius:8px; color:white;";
-
-  const imageUrl = getImageUrl(ex);
-  if (imageUrl) {
-    const img = document.createElement("img");
-    img.src = imageUrl;
-    img.style.cssText = "max-width:100%; border-radius:4px; cursor:pointer;";
-    img.onerror = () => img.remove();
-    widget.appendChild(img);
-  }
-
-  const text = document.createElement("div");
-  text.textContent = ex.sentence;
-  text.style.cssText = "margin-top:10px; font-size:1.1em;";
-  widget.appendChild(text);
-
-  const translation = document.createElement("div");
-  translation.textContent = ex.translation || "";
-  translation.style.cssText = "margin-top:5px; font-size:0.9em; color:#aaa;";
-  widget.appendChild(translation);
-
-  return widget;
-}
-
-function injectWidget(examples) {
-  let index = 0;
-
-  const render = () => {
-    document.getElementById("ik-widget")?.remove();
-
-    const anchor =
-      document.querySelector(".subsection-meanings") ||
-      document.querySelector(".result.vocabulary") ||
-      document.querySelector(".hbox.wrap") ||
-      document.querySelectorAll("h6.subsection-label")[2];
-
-    if (!anchor) {
-      console.warn("[IK] No injection point found");
-      return;
+    const freshlyBuiltMap = {};
+    for (const [slugKey, entryData] of Object.entries(metadataJson.data)) {
+      freshlyBuiltMap[slugKey] = entryData.title || slugKey;
     }
 
-    const widget = buildWidget(examples[index], index, examples.length);
+    globalTitleMetadataMap = freshlyBuiltMap;
+    console.log(
+      "[IK] Metadata Map built. Example Entry:",
+      Object.entries(globalTitleMetadataMap)[0],
+    );
+    return globalTitleMetadataMap;
+  } catch (error) {
+    console.error("[IK] Metadata fetch failed:", error);
+    return {};
+  }
+}
 
-    const nav = document.createElement("div");
-    nav.style.marginTop = "10px";
+async function fetchImmersionData(targetJapaneseWord) {
+  const searchApiUrl = `https://apiv2.immersionkit.com/search?q=${encodeURIComponent(targetJapaneseWord)}&sort=sentence_length:asc&limit=50`;
+  console.log("[IK] Fetching from API:", searchApiUrl);
 
-    const prevBtn = document.createElement("button");
-    prevBtn.textContent = "← Prev";
-    prevBtn.onclick = () => {
-      index = (index - 1 + examples.length) % examples.length;
-      render();
-    };
+  try {
+    const apiResponse = await fetch(searchApiUrl);
+    if (!apiResponse.ok) {
+      throw new Error(
+        `ImmersionKit API responded with status: ${apiResponse.status}`,
+      );
+    }
 
-    const nextBtn = document.createElement("button");
-    nextBtn.textContent = "Next →";
-    nextBtn.style.marginLeft = "10px";
-    nextBtn.onclick = () => {
-      index = (index + 1) % examples.length;
-      render();
-    };
+    const rootJsonResponse = await apiResponse.json();
+    console.log("[IK] Raw API Response:", rootJsonResponse);
 
-    const counter = document.createElement("span");
-    counter.textContent = ` ${index + 1} / ${examples.length} `;
-    counter.style.margin = "0 10px";
+    const sentenceExamplesList = rootJsonResponse.data?.[0]?.examples || [];
+    console.log("[IK] Extracted Examples Array:", sentenceExamplesList);
 
-    nav.append(prevBtn, counter, nextBtn);
-    widget.appendChild(nav);
+    return sentenceExamplesList;
+  } catch (error) {
+    console.error("[IK] Fetch failed:", error);
+    return [];
+  }
+}
 
-    anchor.parentNode.insertBefore(widget, anchor);
-  };
+function getImageUrl(exampleObject) {
+  const shortSlug = exampleObject.title;
+  const fullTitle = globalTitleMetadataMap[shortSlug] || shortSlug;
+  const filename = exampleObject.image;
 
-  render();
+  const finalUrl = `${MEDIA_REPOSITORY_BASE}/anime/${encodeURIComponent(fullTitle)}/${encodeURIComponent(filename)}`;
+
+  console.log(`[IK] Media URL Construction:
+    - Slug: ${shortSlug}
+    - Mapped Title: ${fullTitle}
+    - Filename: ${filename}
+    - Result: ${finalUrl}`);
+
+  return finalUrl;
 }
 
 async function main() {
-  const vocab = parseVocab();
-  if (!vocab) return;
+  const targetWord = parseVocab();
+
+  if (!targetWord) {
+    console.log("[IK] No word found, stopping execution.");
+    return;
+  }
 
   try {
-    const [examples] = await Promise.all([
-      fetchExamples(vocab),
-      loadTitleMap(),
+    const [sentenceExamplesList, metadata] = await Promise.all([
+      fetchImmersionData(targetWord),
+      loadTitleMetadataMap(),
     ]);
 
-    if (examples.length > 0) {
-      const imageUrl = getImageUrl(examples[0]);
-      const soundUrl = getSoundUrl(examples[0]);
-      console.log("[IK] Image URL:", imageUrl);
-      console.log("[IK] Sound URL:", soundUrl);
-
-      injectWidget(examples);
+    // check if null or empty instead
+    if (
+      !sentenceExamplesList ||
+      sentenceExamplesList.length === 0 ||
+      !sentenceExamplesList[0]
+    ) {
+      console.warn("[IK] No valid examples found for:", targetWord);
+      return;
     }
-  } catch (e) {
-    console.error("[IK] Error in main loop:", e);
+
+    console.log(
+      "[IK] Valid data received. Example count:",
+      sentenceExamplesList.length,
+    );
+    const firstExample = sentenceExamplesList[0];
+
+    const testImageUrl = getImageUrl(firstExample);
+    console.log("[IK] Test Image URL:", testImageUrl);
+  } catch (parallelError) {
+    console.error("[IK] Error during parallel data loading:", parallelError);
   }
 }
 
