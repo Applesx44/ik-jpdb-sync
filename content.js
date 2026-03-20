@@ -136,22 +136,23 @@ async function fetchImmersionData(targetJapaneseWord) {
   }
 }
 function getSoundUrl(exampleObject) {
-  console.log(exampleObject);
-  let shortSlug = exampleObject.title;
-}
-function getImageUrl(exampleObject) {
   const shortSlug = exampleObject.title;
   const fullTitle = globalTitleMetadataMap[shortSlug] || shortSlug;
-  const filename = exampleObject.image;
+  const filename = exampleObject.sound;
+
+  console.log("[IK] Debugging Audio Data:", {
+    slug: shortSlug,
+    mappedTitle: fullTitle,
+    filename: filename,
+    fullObject: exampleObject,
+  });
+
+  if (!filename) {
+    console.warn("[IK] No sound file found in this example object.");
+    return "";
+  }
 
   const finalUrl = `${MEDIA_REPOSITORY_BASE}/anime/${encodeURIComponent(fullTitle)}/${encodeURIComponent(filename)}`;
-
-  console.log(`[IK] Media URL Construction:
-    - Slug: ${shortSlug}
-    - Mapped Title: ${fullTitle}
-    - Filename: ${filename}
-    - Result: ${finalUrl}`);
-
   return finalUrl;
 }
 
