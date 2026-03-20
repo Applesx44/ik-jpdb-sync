@@ -69,9 +69,16 @@ async function fetchExamples(vocab) {
 
   const json = await res.json();
 
-  // ImmersionKit API v2 wraps results in a data array
+  //use json.data.[0] instead
   const examples = json.data?.[0]?.examples || [];
-  console.log("[IK] Raw first example:", examples[0]);
+
+  if (examples.length > 0) {
+    console.log("[IK] Found examples:", examples.length);
+    console.log("[IK] Raw first example:", examples[0]);
+  } else {
+    console.log("[IK] No examples found in the data array.");
+  }
+
   return examples;
 }
 
@@ -111,25 +118,84 @@ function getSoundUrl(ex) {
   return buildMediaUrl(category, ex.deck_name || ex.title, ex.sound);
 }
 
-function buildWidget(ex, index, total, titleMap) {
+function buildWidget(ex, index, total) {
   const widget = document.createElement("div");
   widget.id = "ik-widget";
   widget.style.cssText =
-    "text-align:center; margin:20px; padding:10px; background:#222; border-radius:8px;";
+    "text-align:center; margin:20px; padding:10px; background:#222; border-radius:8px; color:white;";
 
-  const img = document.createElement("img");
-  const displayTitle = titleMap[ex.deck_name] || ex.deck_name;
-  img.src = `https://us-southeast-1.linodeobjects.com/immersionkit/media/anime/${encodeURIComponent(displayTitle)}/media/${ex.image}`;
-  img.style.cssText = "max-width:100%; border-radius:4px;";
-  img.onerror = () => img.remove();
+  const imageUrl = getImageUrl(ex);
+  if (imageUrl) {
+    const img = document.createElement("img");
+    img.src = imageUrl;
+    img.style.cssText = "max-width:100%; border-radius:4px; cursor:pointer;";
+    img.onerror = () => img.remove();
+    widget.appendChild(img);
+  }
 
   const text = document.createElement("div");
   text.textContent = ex.sentence;
-  text.style.cssText = "color:white; margin-top:10px; font-size:1.1em;";
+  text.style.cssText = "margin-top:10px; font-size:1.1em;";
+  widget.appendChild(text);
 
-  widget.append(img, text);
+  const translation = document.createElement("div");
+  translation.textContent = ex.translation || "";
+  translation.style.cssText = "margin-top:5px; font-size:0.9em; color:#aaa;";
+  widget.appendChild(translation);
+
   return widget;
 }
+
+function injectWidget(examples) {
+  let index = 0;
+
+  const render = () => {
+    document.getElementById("ik-widget")?.remove();
+
+    const anchor =
+      document.querySelector(".subsection-meanings") ||
+      document.querySelector(".result.vocabulary") ||
+      document.querySelector(".hbox.wrap") ||
+      document.querySelectorAll("h6.subsection-label")[2];
+
+    if (!anchor) {
+      console.warn("[IK] No injection point found");
+      return;
+    }
+
+    const widget = buildWidget(examples[index], index, examples.length);
+
+    const nav = document.createElement("div");
+    nav.style.marginTop = "10px";
+
+    const prevBtn = document.createElement("button");
+    prevBtn.textContent = "← Prev";
+    prevBtn.onclick = () => {
+      index = (index - 1 + examples.length) % examples.length;
+      render();
+    };
+
+    const nextBtn = document.createElement("button");
+    nextBtn.textContent = "Next →";
+    nextBtn.style.marginLeft = "10px";
+    nextBtn.onclick = () => {
+      index = (index + 1) % examples.length;
+      render();
+    };
+
+    const counter = document.createElement("span");
+    counter.textContent = ` ${index + 1} / ${examples.length} `;
+    counter.style.margin = "0 10px";
+
+    nav.append(prevBtn, counter, nextBtn);
+    widget.appendChild(nav);
+
+    anchor.parentNode.insertBefore(widget, anchor);
+  };
+
+  render();
+}
+
 async function main() {
   const vocab = parseVocab();
   if (!vocab) return;
@@ -145,10 +211,11 @@ async function main() {
       const soundUrl = getSoundUrl(examples[0]);
       console.log("[IK] Image URL:", imageUrl);
       console.log("[IK] Sound URL:", soundUrl);
-      // paste the image URL in a new tab to verify it loads
+
+      injectWidget(examples);
     }
   } catch (e) {
-    console.error("[IK] Error:", e);
+    console.error("[IK] Error in main loop:", e);
   }
 }
 
