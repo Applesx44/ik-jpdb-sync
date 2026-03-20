@@ -135,7 +135,10 @@ async function fetchImmersionData(targetJapaneseWord) {
     return [];
   }
 }
-
+function getSoundUrl(exampleObject) {
+  console.log(exampleObject);
+  let shortSlug = exampleObject.title;
+}
 function getImageUrl(exampleObject) {
   const shortSlug = exampleObject.title;
   const fullTitle = globalTitleMetadataMap[shortSlug] || shortSlug;
@@ -183,6 +186,7 @@ async function main() {
     const firstExample = sentenceExamplesList[0];
 
     const testImageUrl = getImageUrl(firstExample);
+    const testSoundUrl = getSoundUrl(firstExample);
     console.log("[IK] Test Image URL:", testImageUrl);
   } catch (parallelError) {
     console.error("[IK] Error during parallel data loading:", parallelError);
