@@ -335,7 +335,20 @@ window.addEventListener("hashchange", () => {
   stopAudio();
   setTimeout(main, 300);
 });
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("IKCache", 1);
 
+    req.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore("examples", { keyPath: "keyword" });
+    };
+
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.errorCode);
+  });
+}
+
+openDB().then(() => console.log("[IK] IndexedDB opened successfully"));
 async function main() {
   document.getElementById("ik-widget")?.remove();
 
