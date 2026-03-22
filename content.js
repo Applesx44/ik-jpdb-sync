@@ -147,14 +147,12 @@ async function cacheGet(keyword) {
       .transaction("examples", "readonly")
       .objectStore("examples")
       .get(keyword);
-
     req.onsuccess = (e) => {
       const record = e.target.result;
       if (!record) return resolve(null);
       if (Date.now() - record.timestamp > CACHE_EXPIRY) return resolve(null);
       resolve(record.data);
     };
-
     req.onerror = () => resolve(null);
   });
 }
@@ -206,6 +204,138 @@ async function fetchExamples(vocab) {
   }
 }
 
+// settings page
+
+const SETTINGS_KEY = "ik-settings";
+
+const DEFAULT_SETTINGS = {
+  imageWidth: 400,
+  volume: 0.8,
+  autoplay: true,
+  showTranslation: true,
+};
+
+let settings = { ...DEFAULT_SETTINGS };
+
+function loadSettings() {
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    if (saved) settings = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+  } catch (_) {}
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function openSettingsMenu() {
+  document.getElementById("ik-settings-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "ik-settings-overlay";
+  overlay.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,0.75);z-index:9999;
+    display:flex;justify-content:center;align-items:center;
+  `;
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  const panel = document.createElement("div");
+  panel.style.cssText = `
+    background:#1a1a2e;color:#eee;padding:24px;
+    border-radius:8px;width:360px;
+    box-shadow:0 4px 32px rgba(0,0,0,0.5);
+  `;
+
+  panel.innerHTML = `<h3 style="margin:0 0 16px;font-size:1rem;">⚙ ImmersionKit Settings</h3>`;
+
+  function makeRow(label, inputEl) {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:90%;";
+    const lbl = document.createElement("span");
+    lbl.textContent = label;
+    row.append(lbl, inputEl);
+    return row;
+  }
+
+  // image width
+  const widthInput = document.createElement("input");
+  widthInput.type = "number";
+  widthInput.value = settings.imageWidth;
+  widthInput.min = "200";
+  widthInput.max = "800";
+  widthInput.style.cssText =
+    "width:70px;background:#111;color:#eee;border:1px solid #555;border-radius:4px;padding:4px;";
+  panel.appendChild(makeRow("Image width (px)", widthInput));
+
+  // volume
+  const volInput = document.createElement("input");
+  volInput.type = "range";
+  volInput.min = "0";
+  volInput.max = "1";
+  volInput.step = "0.05";
+  volInput.value = settings.volume;
+  panel.appendChild(makeRow("Volume", volInput));
+
+  // autoplay
+  const autoplayInput = document.createElement("input");
+  autoplayInput.type = "checkbox";
+  autoplayInput.checked = settings.autoplay;
+  panel.appendChild(makeRow("Autoplay audio", autoplayInput));
+
+  // show translation
+  const transInput = document.createElement("input");
+  transInput.type = "checkbox";
+  transInput.checked = settings.showTranslation;
+  panel.appendChild(makeRow("Show translation", transInput));
+
+  // buttons
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:8px;margin-top:20px;";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.textContent = "Save";
+  saveBtn.style.cssText =
+    "flex:1;padding:8px;border-radius:4px;background:#3d81ff;color:#fff;cursor:pointer;border:none;";
+  saveBtn.addEventListener("click", () => {
+    settings.imageWidth = parseInt(widthInput.value) || 400;
+    settings.volume = parseFloat(volInput.value);
+    settings.autoplay = autoplayInput.checked;
+    settings.showTranslation = transInput.checked;
+    saveSettings();
+    overlay.remove();
+    main(); // re-render with new settings
+  });
+
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "Close";
+  closeBtn.style.cssText =
+    "flex:1;padding:8px;border-radius:4px;background:#333;color:#fff;cursor:pointer;border:none;";
+  closeBtn.addEventListener("click", () => overlay.remove());
+
+  const clearBtn = document.createElement("button");
+  clearBtn.textContent = "Clear cache";
+  clearBtn.style.cssText =
+    "flex:1;padding:8px;border-radius:4px;background:#555;color:#fff;cursor:pointer;border:none;";
+  clearBtn.addEventListener("click", async () => {
+    const req = indexedDB.deleteDatabase("IKCache");
+    req.onsuccess = () => {
+      clearBtn.textContent = "✓ Cleared";
+      setTimeout(() => {
+        clearBtn.textContent = "Clear cache";
+      }, 2000);
+    };
+  });
+
+  btnRow.append(saveBtn, closeBtn, clearBtn);
+  panel.appendChild(btnRow);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+}
+
 let currentAudio = null;
 let pendingUrl = null;
 let unlockAttached = false;
@@ -243,7 +373,7 @@ async function playAudio(soundUrl) {
   const blobUrl = URL.createObjectURL(blob);
 
   const audio = new Audio(blobUrl);
-  audio.volume = 0.8;
+  audio.volume = settings.volume;
 
   try {
     await audio.play();
@@ -276,7 +406,14 @@ function injectWidget(examples) {
 
   const widget = document.createElement("div");
   widget.id = "ik-widget";
-  widget.style.cssText = "text-align:center;margin:8px 0;font-family:inherit;";
+  widget.style.cssText = `text-align:center;margin:8px 0;font-family:inherit;width:${settings.imageWidth + 100}px;`;
+
+  const settingsBtn = document.createElement("button");
+  settingsBtn.textContent = "⚙";
+  settingsBtn.style.cssText =
+    "float:right;background:none;border:none;cursor:pointer;font-size:1rem;color:#888;";
+  settingsBtn.addEventListener("click", openSettingsMenu);
+  widget.appendChild(settingsBtn);
 
   const content = document.createElement("div");
 
@@ -289,8 +426,7 @@ function injectWidget(examples) {
     if (imageUrl) {
       const img = document.createElement("img");
       img.src = imageUrl;
-      img.style.cssText =
-        "max-width:400px;border-radius:4px;display:block;margin:0 auto;cursor:pointer;margin-top:6px;";
+      img.style.cssText = `width:${settings.imageWidth}px;max-width:100%;border-radius:4px;display:block;margin:0 auto;cursor:pointer;margin-top:6px;`;
       img.onerror = () => (img.style.display = "none");
       img.addEventListener("click", () => playAudio(soundUrl));
       content.appendChild(img);
@@ -312,7 +448,7 @@ function injectWidget(examples) {
       content.appendChild(sent);
     }
 
-    if (ex.translation) {
+    if (settings.showTranslation && ex.translation) {
       const trans = document.createElement("div");
       trans.textContent = ex.translation;
       trans.style.cssText = "margin-top:4px;font-size:85%;color:#888;";
@@ -329,7 +465,7 @@ function injectWidget(examples) {
     leftBtn.style.opacity = leftBtn.disabled ? "0.3" : "1";
     rightBtn.style.opacity = rightBtn.disabled ? "0.3" : "1";
 
-    playAudio(soundUrl);
+    if (settings.autoplay) playAudio(soundUrl);
   }
 
   const leftBtn = makeArrow("←", () => {
@@ -360,25 +496,22 @@ function injectWidget(examples) {
   const vboxGap = document.querySelector(".vbox.gap");
 
   if (meanings && vboxGap) {
-    // remove any previous wide layout wrapper before rebuilding
-    document.getElementById("ik-wide-wrapper")?.remove();
+    document.getElementById("ik-dynamic")?.remove();
 
     const sideWrapper = document.createElement("div");
-    sideWrapper.id = "ik-wide-wrapper";
-    sideWrapper.style.cssText = "display:flex;align-items:flex-start;gap:16px;";
+    sideWrapper.style.cssText = "display:flex;align-items:flex-start;gap:24px;";
 
-    const leftCol = document.createElement("div");
-    leftCol.style.flex = "1";
-    leftCol.appendChild(meanings);
+    const rightCol = document.createElement("div");
+    rightCol.style.flex = "1";
+    rightCol.appendChild(meanings);
 
-    // pitch accent and kanji breakdown sit under meanings in the left col
     const pitchAccent = document.querySelector(".subsection-pitch-accent");
     const composedOf = document.querySelector(".subsection-composed-of-kanji");
-    if (composedOf) leftCol.appendChild(composedOf);
-    if (pitchAccent) leftCol.appendChild(pitchAccent);
+    if (composedOf) rightCol.appendChild(composedOf);
+    if (pitchAccent) rightCol.appendChild(pitchAccent);
 
-    sideWrapper.appendChild(leftCol);
     sideWrapper.appendChild(widget);
+    sideWrapper.appendChild(rightCol);
 
     const dynDiv = document.createElement("div");
     dynDiv.id = "ik-dynamic";
@@ -413,7 +546,6 @@ const navObserver = new MutationObserver(() => {
 });
 
 navObserver.observe(document.body, { childList: true, subtree: true });
-
 window.addEventListener("popstate", () => {
   stopAudio();
   setTimeout(main, 300);
@@ -422,7 +554,6 @@ window.addEventListener("hashchange", () => {
   stopAudio();
   setTimeout(main, 300);
 });
-
 async function main() {
   document.getElementById("ik-widget")?.remove();
   document.getElementById("ik-dynamic")?.remove();
@@ -453,4 +584,5 @@ async function main() {
   }
 }
 
+loadSettings();
 main();
