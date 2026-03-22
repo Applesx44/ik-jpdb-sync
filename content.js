@@ -153,20 +153,42 @@ async function fetchExamples(vocab) {
     return [];
   }
 }
+
+let currentAudio = null; // reference to the audio object
+
+function stopAudio() {
+  if (!currentAudio) return;
+  currentAudio.pause();
+  console.log(currentAudio);
+  currentAudio.src = "";
+  console.log(currentAudio.src);
+  console.log(currentAudio.srcObject);
+  if (currentAudio.srcObject) {
+    currentAudio.srcObject = null;
+  }
+  currentAudio = null;
+}
 async function playAudio(soundUrl) {
   if (!soundUrl) return;
   console.log(soundUrl);
-
+  stopAudio();
   const res = await fetch(soundUrl);
   const blob = await res.blob();
-  const blobUrl = URL.createObjectURL(blob);
+  const currentAudio = URL.createObjectURL(blob);
   console.log(blob);
-
-  const audio = new Audio(blobUrl);
+  // Blob {size: 41549, type: 'audio/mpeg'}
+  console.log(currentAudio);
+  //blob blob:https://jpdb.io/d50d5701-7d17-4c91-b4e7-77e095ef542b
+  const audio = new Audio(currentAudio);
   console.log(blobUrl);
   audio.volume = 0.8;
   audio.play();
-  audio.onended = () => URL.revokeObjectURL(blobUrl); // revoke slot for next audio to come in?
+  currentAudio = audio;
+  audio.onended = () => {
+    URL.revokeObjectURL(currentAudio);
+    currentAudio = null;
+  }; // clear current audio
+  console.log(currentAudio);
 }
 // widget UI
 function injectWidget(examples) {
@@ -237,16 +259,19 @@ function injectWidget(examples) {
     rightBtn.disabled = index === examples.length - 1;
     leftBtn.style.opacity = leftBtn.disabled ? "0.3" : "1";
     rightBtn.style.opacity = rightBtn.disabled ? "0.3" : "1";
+    playAudio(soundUrl);
   }
 
   const leftBtn = makeArrow("←", () => {
     if (index > 0) {
+      stopAudio();
       index--;
       renderContent();
     }
   });
   const rightBtn = makeArrow("→", () => {
     if (index < examples.length - 1) {
+      stopAudio();
       index++;
       renderContent();
     }
