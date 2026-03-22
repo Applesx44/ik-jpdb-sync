@@ -1,162 +1,255 @@
+console.log("[IK] Extension loaded on:", window.location.href);
+
 function parseVocab() {
-  const currentPageUrl = window.location.href;
-  console.log("[IK] Scanning page:", currentPageUrl);
+  const url = window.location.href;
+  console.log("[IK] Scanning page:", url);
 
-  if (currentPageUrl.includes("/vocabulary/")) {
-    const vocabUrlPattern = /\/vocabulary\/\d+\/([^#/?]*)/;
-    const urlMatchResult = currentPageUrl.match(vocabUrlPattern);
-
-    if (urlMatchResult) {
-      const encodedWordFromUrl = urlMatchResult[1];
-      const cleanJapaneseWord = decodeURIComponent(encodedWordFromUrl);
-
-      console.log(
-        "[IK] Vocabulary page match:",
-        encodedWordFromUrl,
-        "->",
-        cleanJapaneseWord,
-      );
-      return cleanJapaneseWord;
+  // vocabulary page — word is in the URL
+  if (url.includes("/vocabulary/")) {
+    const match = url.match(/\/vocabulary\/\d+\/([^#/?]*)/);
+    if (match) {
+      const word = decodeURIComponent(match[1]);
+      console.log("[IK] Vocabulary page, word:", word);
+      return word;
     }
   }
 
-  if (currentPageUrl.includes("/kanji/")) {
-    const kanjiUrlPattern = /\/kanji\/\d+\/([^#/?]*)/;
-    const urlMatchResult = currentPageUrl.match(kanjiUrlPattern);
-
-    if (urlMatchResult) {
-      const rawKanjiString = urlMatchResult[1];
-      const cleanKanji = decodeURIComponent(rawKanjiString).split("/")[0];
-
-      console.log("[IK] Kanji page match:", rawKanjiString, "->", cleanKanji);
-      return cleanKanji;
+  // kanji page — word is in the URL
+  if (url.includes("/kanji/")) {
+    const match = url.match(/\/kanji\/\d+\/([^#/?]*)/);
+    if (match) {
+      const word = decodeURIComponent(match[1]).split("/")[0];
+      console.log("[IK] Kanji page, word:", word);
+      return word;
     }
   }
 
-  if (currentPageUrl.includes("/review") || currentPageUrl.includes("c=")) {
-    console.log("[IK] Review/Exercise session detected. Searching DOM...");
-
-    const mainWordElement = document.querySelector(".plain");
-    if (mainWordElement) {
-      const offlineElementClone = mainWordElement.cloneNode(true);
-      const furiganaTags = offlineElementClone.querySelectorAll("rt, rp");
-
-      console.log(
-        "[IK] Found",
-        furiganaTags.length,
-        "furigana tags to remove.",
-      );
-
-      furiganaTags.forEach((tag) => tag.remove());
-      const extractedText = offlineElementClone.textContent.trim();
-
-      console.log("[IK] DOM Extraction Result:", extractedText);
-      return extractedText;
+  // search page  word is in the query string
+  if (url.includes("/search?q=")) {
+    const match = url.match(/\/search\?q=([^&]*)/);
+    if (match) {
+      const word = decodeURIComponent(match[1]);
+      console.log("[IK] Search page, word:", word);
+      return word;
     }
+  }
 
-    const navigationLinks = document.querySelectorAll(
+  //https://jpdb.io/review?c=vf%2C1994460%2C3995039005&r=1#a
+  // review page  word is in the DOM, not the URL
+  if (url.includes("/review") || url.includes("c=")) {
+    console.log("[IK] Review page, scanning DOM...");
+
+    // anchor links always have the clean word in the href
+    const links = document.querySelectorAll(
       'a[href*="/vocabulary/"], a[href*="/kanji/"]',
     );
-    console.log(
-      "[IK] No .plain element. Checking",
-      navigationLinks.length,
-      "links as fallback.",
-    );
+    for (const link of links) {
+      const href = link.getAttribute("href");
+      const match = href.match(/\/(vocabulary|kanji)\/\d+\/([^#?]*)/);
+      if (match?.[2]) {
+        const word = decodeURIComponent(match[2]);
+        console.log("[IK] Word from link:", word);
+        return word;
+      }
+    }
 
-    for (const link of navigationLinks) {
-      const linkHref = link.getAttribute("href");
-      const linkPattern = /\/(vocabulary|kanji)\/\d+\/([^#?]*)/;
-      const linkMatchResult = linkHref.match(linkPattern);
-
-      if (linkMatchResult && linkMatchResult[2]) {
-        const decodedWordFromLink = decodeURIComponent(linkMatchResult[2]);
-        console.log("[IK] Word recovered from link:", decodedWordFromLink);
-        return decodedWordFromLink;
+    //strip furigana from word
+    // without stripping: "食べる" becomes "食べるたべる" (kanji + reading mashed)
+    const plainEl = document.querySelector(".plain");
+    if (plainEl) {
+      const clone = plainEl.cloneNode(true);
+      clone.querySelectorAll("rt, rp").forEach((n) => n.remove());
+      const word = clone.textContent.trim();
+      if (word) {
+        console.log("[IK] Word from .plain:", word);
+        return word;
       }
     }
   }
 
-  console.warn("[IK] Scraper could not identify a Japanese word on this page.");
+  console.warn("[IK] Could not find word on this page");
   return "";
 }
 
-const MEDIA_REPOSITORY_BASE =
+const MEDIA_BASE =
   "https://us-southeast-1.linodeobjects.com/immersionkit/media";
 
-let globalTitleMetadataMap = null;
+let titleMap = null;
 
-async function loadTitleMetadataMap() {
-  if (globalTitleMetadataMap) return globalTitleMetadataMap;
+async function loadTitleMap() {
+  if (titleMap) return;
 
   try {
-    const metadataResponse = await fetch(
-      "https://apiv2.immersionkit.com/index_meta",
-    );
-    const metadataJson = await metadataResponse.json();
+    const res = await fetch("https://apiv2.immersionkit.com/index_meta");
+    const json = await res.json();
 
-    const freshlyBuiltMap = {};
-    for (const [slugKey, entryData] of Object.entries(metadataJson.data)) {
-      freshlyBuiltMap[slugKey] = entryData.title || slugKey;
+    titleMap = {};
+    // map slug hunter_x_hunter to Hunter X Hunter Name in hashmap
+    for (const [slug, entry] of Object.entries(json.data)) {
+      titleMap[slug] = entry.title || slug; // incase slug is as same as the title.
     }
 
-    globalTitleMetadataMap = freshlyBuiltMap;
     console.log(
-      "[IK] Metadata Map built. Example Entry:",
-      Object.entries(globalTitleMetadataMap)[0],
+      "[IK] Title map loaded,",
+      Object.keys(titleMap).length,
+      "entries",
     );
-    return globalTitleMetadataMap;
-  } catch (error) {
-    console.error("[IK] Metadata fetch failed:", error);
-    return {};
+  } catch (err) {
+    console.error("[IK] Title map fetch failed:", err);
+    titleMap = {}; // empty map — fall back to slug as-is
   }
 }
 
-async function fetchImmersionData(targetJapaneseWord) {
-  const searchApiUrl = `https://apiv2.immersionkit.com/search?q=${encodeURIComponent(targetJapaneseWord)}&sort=sentence_length:asc&limit=50`;
-  console.log("[IK] Fetching from API:", searchApiUrl);
+// example fetch from console logs is as following
+// media: "anime" => media type or category
+// title: "hunter_x_hunter" => actual slug
+// image: "HUNTERxHUNTER_22.JPG" filename
+// sound: ...........mp3 filename
+
+function getImageUrl(ex) {
+  const category = ex.media || ex.id?.split("_")[0] || "";
+  const displayTitle = titleMap?.[ex.title] || ex.title || "";
+  const filename = ex.image || "";
+
+  if (!filename) return null;
+
+  // browser encodes automatically when setting img.src , didnt fetch correctly for example Hunter_x_Hunter is Hunter%20%20 something after using encodeURIComponent
+  return `${MEDIA_BASE}/${category}/${displayTitle}/media/${filename}`;
+}
+
+function getSoundUrl(ex) {
+  const category = ex.media || ex.id?.split("_")[0] || "";
+  const displayTitle = titleMap?.[ex.title] || ex.title || "";
+  const filename = ex.sound || "";
+
+  if (!filename) return null;
+
+  return `${MEDIA_BASE}/${category}/${displayTitle}/media/${filename}`;
+}
+
+// v2 response shape: { examples: [...], category_count: {...} }
+// not rootJsonResponse.data?.[0]?.examples ,,that was the old dead v1 api
+
+async function fetchExamples(vocab) {
+  const url = `https://apiv2.immersionkit.com/search?q=${encodeURIComponent(vocab)}&sort=sentence_length:asc&limit=50`;
+  console.log("[IK] Fetching from API:", url);
 
   try {
-    const apiResponse = await fetch(searchApiUrl);
-    if (!apiResponse.ok) {
-      throw new Error(
-        `ImmersionKit API responded with status: ${apiResponse.status}`,
-      );
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`ImmersionKit API responded with status: ${res.status}`);
     }
 
-    const rootJsonResponse = await apiResponse.json();
-    console.log("[IK] Raw API Response:", rootJsonResponse);
+    const json = await res.json();
+    console.log("[IK] Raw API Response:", json);
 
-    const sentenceExamplesList = rootJsonResponse.data?.[0]?.examples || [];
-    console.log("[IK] Extracted Examples Array:", sentenceExamplesList);
+    const examples = json.examples || [];
+    console.log("[IK] Extracted Examples Array:", examples);
 
-    return sentenceExamplesList;
-  } catch (error) {
-    console.error("[IK] Fetch failed:", error);
+    return examples;
+  } catch (err) {
+    console.error("[IK] Fetch failed:", err);
     return [];
   }
 }
-function getSoundUrl(exampleObject) {
-  const shortSlug = exampleObject.title;
-  const fullTitle = globalTitleMetadataMap[shortSlug] || shortSlug;
-  const filename = exampleObject.sound;
 
-  console.log("[IK] Debugging Audio Data:", {
-    slug: shortSlug,
-    mappedTitle: fullTitle,
-    filename: filename,
-    fullObject: exampleObject,
-  });
+// widget UI
+function injectWidget(examples) {
+  document.getElementById("ik-widget")?.remove();
+  if (!examples.length) return;
 
-  if (!filename) {
-    console.warn("[IK] No sound file found in this example object.");
-    return "";
+  let index = 0;
+
+  function makeArrow(label, onClick) {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.style.cssText =
+      "width:45px;height:35px;font-size:14px;cursor:pointer;border-radius:4px;";
+    btn.addEventListener("click", onClick);
+    return btn;
   }
 
-  const finalUrl = `${MEDIA_REPOSITORY_BASE}/anime/${encodeURIComponent(fullTitle)}/${encodeURIComponent(filename)}`;
-  return finalUrl;
+  const widget = document.createElement("div");
+  widget.id = "ik-widget";
+  widget.style.cssText = "text-align:center;margin:8px 0;font-family:inherit;";
+
+  const content = document.createElement("div");
+
+  function renderContent() {
+    content.innerHTML = "";
+    const ex = examples[index];
+    const imageUrl = getImageUrl(ex);
+    const soundUrl = getSoundUrl(ex);
+
+    if (imageUrl) {
+      const img = document.createElement("img");
+      img.src = imageUrl;
+      img.style.cssText =
+        "max-width:400px;border-radius:4px;display:block;margin:0 auto;cursor:pointer;margin-top:6px;";
+      img.onerror = () => (img.style.display = "none");
+      content.appendChild(img);
+    }
+
+    if (ex.sentence) {
+      const sent = document.createElement("div");
+      sent.textContent = ex.sentence;
+      sent.style.cssText = "margin-top:8px;font-size:120%;color:#ddd;";
+      content.appendChild(sent);
+    }
+
+    if (ex.translation) {
+      const trans = document.createElement("div");
+      trans.textContent = ex.translation;
+      trans.style.cssText = "margin-top:4px;font-size:85%;color:#888;";
+      content.appendChild(trans);
+    }
+
+    const counter = document.createElement("div");
+    counter.textContent = `${index + 1} / ${examples.length}`;
+    counter.style.cssText = "margin-top:6px;font-size:75%;color:#666;";
+    content.appendChild(counter);
+
+    leftBtn.disabled = index === 0;
+    rightBtn.disabled = index === examples.length - 1;
+    leftBtn.style.opacity = leftBtn.disabled ? "0.3" : "1";
+    rightBtn.style.opacity = rightBtn.disabled ? "0.3" : "1";
+  }
+
+  const leftBtn = makeArrow("←", () => {
+    if (index > 0) {
+      index--;
+      renderContent();
+    }
+  });
+  const rightBtn = makeArrow("→", () => {
+    if (index < examples.length - 1) {
+      index++;
+      renderContent();
+    }
+  });
+
+  const row = document.createElement("div");
+  row.style.cssText =
+    "display:flex;align-items:center;justify-content:center;gap:8px;";
+  row.append(leftBtn, content, rightBtn);
+  widget.appendChild(row);
+
+  renderContent();
+
+  const anchor =
+    document.querySelector(".subsection-meanings") ||
+    document.querySelector(".result.vocabulary") ||
+    document.querySelector(".hbox.wrap") ||
+    document.querySelectorAll("h6.subsection-label")[2];
+
+  if (anchor) anchor.parentNode.insertBefore(widget, anchor);
+  else console.warn("[IK] No injection point found");
 }
 
 async function main() {
+  document.getElementById("ik-widget")?.remove();
+
   const targetWord = parseVocab();
 
   if (!targetWord) {
@@ -165,32 +258,21 @@ async function main() {
   }
 
   try {
-    const [sentenceExamplesList, metadata] = await Promise.all([
-      fetchImmersionData(targetWord),
-      loadTitleMetadataMap(),
+    const [examples] = await Promise.all([
+      fetchExamples(targetWord),
+      loadTitleMap(),
     ]);
 
-    // check if null or empty instead
-    if (
-      !sentenceExamplesList ||
-      sentenceExamplesList.length === 0 ||
-      !sentenceExamplesList[0]
-    ) {
+    if (!examples || examples.length === 0) {
       console.warn("[IK] No valid examples found for:", targetWord);
       return;
     }
 
-    console.log(
-      "[IK] Valid data received. Example count:",
-      sentenceExamplesList.length,
-    );
-    const firstExample = sentenceExamplesList[0];
+    console.log("[IK] Valid data received. Example count:", examples.length);
 
-    const testImageUrl = getImageUrl(firstExample);
-    const testSoundUrl = getSoundUrl(firstExample);
-    console.log("[IK] Test Image URL:", testImageUrl);
-  } catch (parallelError) {
-    console.error("[IK] Error during parallel data loading:", parallelError);
+    injectWidget(examples);
+  } catch (err) {
+    console.error("[IK] Error during parallel data loading:", err);
   }
 }
 
