@@ -154,42 +154,59 @@ async function fetchExamples(vocab) {
   }
 }
 
-let currentAudio = null; // reference to the audio object
+let currentAudio = null;
+let pendingUrl = null;
+let unlockAttached = false;
 
 function stopAudio() {
   if (!currentAudio) return;
   currentAudio.pause();
-  console.log(currentAudio);
   currentAudio.src = "";
-  console.log(currentAudio.src);
-  console.log(currentAudio.srcObject);
-  if (currentAudio.srcObject) {
-    currentAudio.srcObject = null;
-  }
   currentAudio = null;
+  pendingUrl = null;
 }
+
+function unlockAndPlay() {
+  if (!pendingUrl) return;
+  const url = pendingUrl;
+  pendingUrl = null;
+  playAudio(url);
+}
+
+function ensureUnlockListener() {
+  if (unlockAttached) return;
+  unlockAttached = true;
+  document.addEventListener("click", unlockAndPlay, { passive: true });
+  document.addEventListener("keydown", unlockAndPlay, { passive: true });
+}
+
 async function playAudio(soundUrl) {
   if (!soundUrl) return;
-  console.log(soundUrl);
+  ensureUnlockListener();
+
   stopAudio();
+
   const res = await fetch(soundUrl);
   const blob = await res.blob();
-  const currentAudio = URL.createObjectURL(blob);
-  console.log(blob);
-  // Blob {size: 41549, type: 'audio/mpeg'}
-  console.log(currentAudio);
-  //blob blob:https://jpdb.io/d50d5701-7d17-4c91-b4e7-77e095ef542b
-  const audio = new Audio(currentAudio);
-  console.log(blobUrl);
+  const blobUrl = URL.createObjectURL(blob);
+
+  const audio = new Audio(blobUrl);
   audio.volume = 0.8;
-  audio.play();
-  currentAudio = audio;
-  audio.onended = () => {
-    URL.revokeObjectURL(currentAudio);
-    currentAudio = null;
-  }; // clear current audio
-  console.log(currentAudio);
+
+  try {
+    await audio.play();
+    currentAudio = audio;
+    audio.onended = () => {
+      URL.revokeObjectURL(blobUrl);
+      currentAudio = null;
+    };
+  } catch (err) {
+    console.log("[IK] Autoplay blocked, queued for first interaction");
+    URL.revokeObjectURL(blobUrl);
+    pendingUrl = soundUrl;
+  }
 }
+
 // widget UI
 function injectWidget(examples) {
   document.getElementById("ik-widget")?.remove();
@@ -224,9 +241,10 @@ function injectWidget(examples) {
       img.style.cssText =
         "max-width:400px;border-radius:4px;display:block;margin:0 auto;cursor:pointer;margin-top:6px;";
       img.onerror = () => (img.style.display = "none");
+      img.addEventListener("click", () => playAudio(soundUrl));
       content.appendChild(img);
-      //      img.addEventListener("click", () => playAudio(soundUrl));
     }
+
     if (soundUrl) {
       const speaker = document.createElement("button");
       speaker.textContent = "🔊";
@@ -259,6 +277,7 @@ function injectWidget(examples) {
     rightBtn.disabled = index === examples.length - 1;
     leftBtn.style.opacity = leftBtn.disabled ? "0.3" : "1";
     rightBtn.style.opacity = rightBtn.disabled ? "0.3" : "1";
+
     playAudio(soundUrl);
   }
 
@@ -294,6 +313,28 @@ function injectWidget(examples) {
   if (anchor) anchor.parentNode.insertBefore(widget, anchor);
   else console.warn("[IK] No injection point found");
 }
+
+let lastUrl = window.location.href;
+
+const navObserver = new MutationObserver(() => {
+  if (window.location.href !== lastUrl) {
+    lastUrl = window.location.href;
+    console.log("[IK] URL changed, re-running");
+    stopAudio();
+    setTimeout(main, 300);
+  }
+});
+
+navObserver.observe(document.body, { childList: true, subtree: true });
+
+window.addEventListener("popstate", () => {
+  stopAudio();
+  setTimeout(main, 300);
+});
+window.addEventListener("hashchange", () => {
+  stopAudio();
+  setTimeout(main, 300);
+});
 
 async function main() {
   document.getElementById("ik-widget")?.remove();
