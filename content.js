@@ -204,6 +204,41 @@ async function fetchExamples(vocab) {
   }
 }
 
+// priority decks examples from these slugs float to the top in order
+// if none match, all examples are shown sorted by sentence length
+const PRIORITY_DECKS = [
+  "hunter_x_hunter",
+  "yakusoku_no_neverland",
+  "fullmetal_alchemist_brotherhood",
+  "steins_gate",
+];
+
+function sortByPriority(examples) {
+  const buckets = {};
+  for (const deck of PRIORITY_DECKS) {
+    buckets[deck] = [];
+  }
+  const rest = [];
+
+  for (const ex of examples) {
+    if (buckets[ex.title] !== undefined) {
+      buckets[ex.title].push(ex);
+    } else {
+      rest.push(ex);
+    }
+  }
+
+  const priority = PRIORITY_DECKS.flatMap((deck) => buckets[deck]);
+
+  if (priority.length === 0) {
+    return [...rest].sort(
+      (a, b) => (a.sentence || "").length - (b.sentence || "").length,
+    );
+  }
+
+  return [...priority, ...rest];
+}
+
 // settings page
 
 const SETTINGS_KEY = "ik-settings";
@@ -261,7 +296,6 @@ function openSettingsMenu() {
     return row;
   }
 
-  // image width
   const widthInput = document.createElement("input");
   widthInput.type = "number";
   widthInput.value = settings.imageWidth;
@@ -271,7 +305,6 @@ function openSettingsMenu() {
     "width:70px;background:#111;color:#eee;border:1px solid #555;border-radius:4px;padding:4px;";
   panel.appendChild(makeRow("Image width (px)", widthInput));
 
-  // volume
   const volInput = document.createElement("input");
   volInput.type = "range";
   volInput.min = "0";
@@ -280,21 +313,33 @@ function openSettingsMenu() {
   volInput.value = settings.volume;
   panel.appendChild(makeRow("Volume", volInput));
 
-  // autoplay
   const autoplayInput = document.createElement("input");
   autoplayInput.type = "checkbox";
   autoplayInput.checked = settings.autoplay;
   panel.appendChild(makeRow("Autoplay audio", autoplayInput));
 
-  // show translation
   const transInput = document.createElement("input");
   transInput.type = "checkbox";
   transInput.checked = settings.showTranslation;
   panel.appendChild(makeRow("Show translation", transInput));
 
-  // buttons
+  const priorityLabel = document.createElement("div");
+  priorityLabel.style.cssText =
+    "font-size:85%;color:#aaa;margin-bottom:4px;margin-top:12px;";
+  priorityLabel.textContent = "Priority decks (one slug per line, shown first)";
+
+  const priorityTA = document.createElement("textarea");
+  priorityTA.value = PRIORITY_DECKS.join("\n");
+  priorityTA.style.cssText = `
+    width:100%;height:80px;box-sizing:border-box;margin-bottom:12px;
+    background:#111;color:#eee;border:1px solid #555;
+    border-radius:4px;padding:6px;font-size:82%;font-family:monospace;resize:vertical;
+  `;
+  panel.appendChild(priorityLabel);
+  panel.appendChild(priorityTA);
+
   const btnRow = document.createElement("div");
-  btnRow.style.cssText = "display:flex;gap:8px;margin-top:20px;";
+  btnRow.style.cssText = "display:flex;gap:8px;margin-top:8px;";
 
   const saveBtn = document.createElement("button");
   saveBtn.textContent = "Save";
@@ -305,9 +350,17 @@ function openSettingsMenu() {
     settings.volume = parseFloat(volInput.value);
     settings.autoplay = autoplayInput.checked;
     settings.showTranslation = transInput.checked;
+
+    const newDecks = priorityTA.value
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    PRIORITY_DECKS.length = 0;
+    PRIORITY_DECKS.push(...newDecks);
+
     saveSettings();
     overlay.remove();
-    main(); // re-render with new settings
+    main();
   });
 
   const closeBtn = document.createElement("button");
@@ -390,7 +443,7 @@ async function playAudio(soundUrl) {
 }
 
 function injectWidget(examples) {
-  document.getElementById("ik-widget")?.remove();
+  document.getElementById("ik-container")?.remove();
   if (!examples.length) return;
 
   let index = 0;
@@ -398,20 +451,18 @@ function injectWidget(examples) {
   function makeArrow(label, onClick) {
     const btn = document.createElement("button");
     btn.textContent = label;
-    btn.style.cssText =
-      "width:45px;height:35px;font-size:14px;cursor:pointer;border-radius:4px;";
+    btn.style.cssText = "width:45px;height:35px;font-size:14px;";
     btn.addEventListener("click", onClick);
     return btn;
   }
 
   const widget = document.createElement("div");
-  widget.id = "ik-widget";
+  widget.id = "ik-container";
   widget.style.cssText = `text-align:center;margin:8px 0;font-family:inherit;width:${settings.imageWidth + 100}px;`;
 
   const settingsBtn = document.createElement("button");
   settingsBtn.textContent = "⚙";
-  settingsBtn.style.cssText =
-    "float:right;background:none;border:none;cursor:pointer;font-size:1rem;color:#888;";
+  settingsBtn.style.cssText = "float:right;font-size:1rem;color:#888;";
   settingsBtn.addEventListener("click", openSettingsMenu);
   widget.appendChild(settingsBtn);
 
@@ -435,8 +486,7 @@ function injectWidget(examples) {
     if (soundUrl) {
       const speaker = document.createElement("button");
       speaker.textContent = "🔊";
-      speaker.style.cssText =
-        "margin-top:8px;font-size:1.2rem;background:none;border:none;cursor:pointer;";
+      speaker.style.cssText = "margin-top:8px;font-size:1.2rem;";
       speaker.addEventListener("click", () => playAudio(soundUrl));
       content.appendChild(speaker);
     }
@@ -462,8 +512,6 @@ function injectWidget(examples) {
 
     leftBtn.disabled = index === 0;
     rightBtn.disabled = index === examples.length - 1;
-    leftBtn.style.opacity = leftBtn.disabled ? "0.3" : "1";
-    rightBtn.style.opacity = rightBtn.disabled ? "0.3" : "1";
 
     if (settings.autoplay) playAudio(soundUrl);
   }
@@ -546,6 +594,7 @@ const navObserver = new MutationObserver(() => {
 });
 
 navObserver.observe(document.body, { childList: true, subtree: true });
+
 window.addEventListener("popstate", () => {
   stopAudio();
   setTimeout(main, 300);
@@ -554,8 +603,9 @@ window.addEventListener("hashchange", () => {
   stopAudio();
   setTimeout(main, 300);
 });
+
 async function main() {
-  document.getElementById("ik-widget")?.remove();
+  document.getElementById("ik-container")?.remove();
   document.getElementById("ik-dynamic")?.remove();
 
   const targetWord = parseVocab();
@@ -578,7 +628,13 @@ async function main() {
 
     console.log("[IK] Valid data received. Example count:", examples.length);
 
-    injectWidget(examples);
+    const sorted = sortByPriority(examples);
+    console.log(
+      "[IK] Priority examples:",
+      sorted.filter((e) => PRIORITY_DECKS.includes(e.title)).length,
+    );
+
+    injectWidget(sorted);
   } catch (err) {
     console.error("[IK] Error during parallel data loading:", err);
   }

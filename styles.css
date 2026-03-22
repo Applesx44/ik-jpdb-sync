@@ -1,0 +1,44 @@
+#ik-container {
+    font-family: inherit;
+}
+
+#ik-container button {
+    background: var(--button-background, #2a2a3e);
+    border: 1px solid var(--button-border, #444);
+    color: var(--text-color, #eee);
+    cursor: pointer;
+    transition:
+        background 0.15s,
+        opacity 0.15s;
+}
+
+#ik-container button:hover:not(:disabled) {
+    background: var(--button-hover, #3a3a5e);
+}
+
+#ik-container button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+#ik-container img {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    border-radius: 4px;
+    transition: opacity 0.2s;
+}
+
+#ik-container img:hover {
+    opacity: 0.9;
+}
+
+#ik-settings-overlay button {
+    border: 1px solid #555;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+#ik-settings-overlay button:hover {
+    filter: brightness(1.15);
+}

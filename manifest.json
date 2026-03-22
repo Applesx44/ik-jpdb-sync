@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JPDB ImmersionKit",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "ImmersionKit examples on jpdb.io",
   "icons": {
     "16": "fav.png",
@@ -24,6 +24,7 @@
     {
       "matches": ["https://jpdb.io/*"],
       "js": ["content.js"],
+      "css": ["styles.css"],
       "run_at": "document_idle"
     }
   ]
