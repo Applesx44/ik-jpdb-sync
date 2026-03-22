@@ -127,11 +127,59 @@ function getSoundUrl(ex) {
   return `${MEDIA_BASE}/${category}/${displayTitle}/media/${filename}`;
 }
 
+const CACHE_EXPIRY = 30 * 24 * 60 * 60 * 1000;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("IKCache", 1);
+    req.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore("examples", { keyPath: "keyword" });
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.errorCode);
+  });
+}
+
+async function cacheGet(keyword) {
+  const db = await openDB();
+  return new Promise((resolve) => {
+    const req = db
+      .transaction("examples", "readonly")
+      .objectStore("examples")
+      .get(keyword);
+
+    req.onsuccess = (e) => {
+      const record = e.target.result;
+      if (!record) return resolve(null);
+      if (Date.now() - record.timestamp > CACHE_EXPIRY) return resolve(null);
+      resolve(record.data);
+    };
+
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function cacheSet(keyword, data) {
+  const db = await openDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction("examples", "readwrite");
+    tx.objectStore("examples").put({ keyword, data, timestamp: Date.now() });
+    tx.oncomplete = resolve;
+  });
+}
+
 // v2 response shape: { examples: [...], category_count: {...} }
 // not rootJsonResponse.data?.[0]?.examples ,,that was the old dead v1 api
 
 async function fetchExamples(vocab) {
   const url = `https://apiv2.immersionkit.com/search?q=${encodeURIComponent(vocab)}&sort=sentence_length:asc&limit=50`;
+
+  const cached = await cacheGet(vocab);
+  if (cached) {
+    console.log("[IK] Cache hit for:", vocab);
+    return cached;
+  }
+
   console.log("[IK] Fetching from API:", url);
 
   try {
@@ -148,7 +196,7 @@ async function fetchExamples(vocab) {
     console.log("[IK] Extracted Examples Array:", examples);
 
     cacheSet(vocab, examples).catch((e) =>
-      console.warn("[IK] cache w failed", e),
+      console.warn("[IK] Cache write failed:", e),
     );
 
     return examples;
@@ -211,7 +259,6 @@ async function playAudio(soundUrl) {
   }
 }
 
-// widget UI
 function injectWidget(examples) {
   document.getElementById("ik-widget")?.remove();
   if (!examples.length) return;
@@ -292,6 +339,7 @@ function injectWidget(examples) {
       renderContent();
     }
   });
+
   const rightBtn = makeArrow("→", () => {
     if (index < examples.length - 1) {
       stopAudio();
@@ -308,8 +356,43 @@ function injectWidget(examples) {
 
   renderContent();
 
+  const meanings = document.querySelector(".subsection-meanings");
+  const vboxGap = document.querySelector(".vbox.gap");
+
+  if (meanings && vboxGap) {
+    // remove any previous wide layout wrapper before rebuilding
+    document.getElementById("ik-wide-wrapper")?.remove();
+
+    const sideWrapper = document.createElement("div");
+    sideWrapper.id = "ik-wide-wrapper";
+    sideWrapper.style.cssText = "display:flex;align-items:flex-start;gap:16px;";
+
+    const leftCol = document.createElement("div");
+    leftCol.style.flex = "1";
+    leftCol.appendChild(meanings);
+
+    // pitch accent and kanji breakdown sit under meanings in the left col
+    const pitchAccent = document.querySelector(".subsection-pitch-accent");
+    const composedOf = document.querySelector(".subsection-composed-of-kanji");
+    if (composedOf) leftCol.appendChild(composedOf);
+    if (pitchAccent) leftCol.appendChild(pitchAccent);
+
+    sideWrapper.appendChild(leftCol);
+    sideWrapper.appendChild(widget);
+
+    const dynDiv = document.createElement("div");
+    dynDiv.id = "ik-dynamic";
+    dynDiv.appendChild(sideWrapper);
+
+    const insertAfter = window.location.href.includes("/vocabulary/")
+      ? vboxGap.children[1]
+      : vboxGap.firstChild;
+
+    vboxGap.insertBefore(dynDiv, insertAfter || vboxGap.firstChild);
+    return;
+  }
+
   const anchor =
-    document.querySelector(".subsection-meanings") ||
     document.querySelector(".result.vocabulary") ||
     document.querySelector(".hbox.wrap") ||
     document.querySelectorAll("h6.subsection-label")[2];
@@ -339,22 +422,10 @@ window.addEventListener("hashchange", () => {
   stopAudio();
   setTimeout(main, 300);
 });
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("IKCache", 1);
 
-    req.onupgradeneeded = (e) => {
-      e.target.result.createObjectStore("examples", { keyPath: "keyword" });
-    };
-
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = (e) => reject(e.target.errorCode);
-  });
-}
-
-openDB().then(() => console.log("[IK] IndexedDB opened successfully"));
 async function main() {
   document.getElementById("ik-widget")?.remove();
+  document.getElementById("ik-dynamic")?.remove();
 
   const targetWord = parseVocab();
 
