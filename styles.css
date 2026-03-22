@@ -2,7 +2,7 @@
     font-family: inherit;
 }
 
-#ik-container button {
+#ik-container .ik-arrow {
     background: var(--button-background, #2a2a3e);
     border: 1px solid var(--button-border, #444);
     color: var(--text-color, #eee);
@@ -10,15 +10,52 @@
     transition:
         background 0.15s,
         opacity 0.15s;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
 }
 
-#ik-container button:hover:not(:disabled) {
+#ik-container .ik-arrow:hover:not(:disabled) {
     background: var(--button-hover, #3a3a5e);
 }
 
-#ik-container button:disabled {
-    opacity: 0.3;
+#ik-container .ik-arrow:disabled {
+    opacity: 0.25;
     cursor: not-allowed;
+}
+
+#ik-container .ik-speaker {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--subsection-label-color, #888);
+    padding: 0 4px;
+    line-height: 1;
+}
+
+#ik-container .ik-speaker:hover {
+    color: var(--text-color, #eee);
+}
+
+#ik-container .ik-gear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--subsection-label-color, #666);
+    padding: 0;
+    line-height: 1;
+}
+
+#ik-container .ik-gear:hover {
+    color: var(--text-color, #eee);
 }
 
 #ik-container img {
@@ -27,6 +64,7 @@
     max-width: 100%;
     border-radius: 4px;
     transition: opacity 0.2s;
+    cursor: pointer;
 }
 
 #ik-container img:hover {
@@ -37,6 +75,7 @@
     border: 1px solid #555;
     cursor: pointer;
     transition: background 0.15s;
+    border-radius: 4px;
 }
 
 #ik-settings-overlay button:hover {

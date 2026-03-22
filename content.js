@@ -344,7 +344,7 @@ function openSettingsMenu() {
   const saveBtn = document.createElement("button");
   saveBtn.textContent = "Save";
   saveBtn.style.cssText =
-    "flex:1;padding:8px;border-radius:4px;background:#3d81ff;color:#fff;cursor:pointer;border:none;";
+    "flex:1;padding:8px;border-radius:4px;background:#3d81ff;color:#fff;";
   saveBtn.addEventListener("click", () => {
     settings.imageWidth = parseInt(widthInput.value) || 400;
     settings.volume = parseFloat(volInput.value);
@@ -366,13 +366,13 @@ function openSettingsMenu() {
   const closeBtn = document.createElement("button");
   closeBtn.textContent = "Close";
   closeBtn.style.cssText =
-    "flex:1;padding:8px;border-radius:4px;background:#333;color:#fff;cursor:pointer;border:none;";
+    "flex:1;padding:8px;border-radius:4px;background:#333;color:#fff;";
   closeBtn.addEventListener("click", () => overlay.remove());
 
   const clearBtn = document.createElement("button");
   clearBtn.textContent = "Clear cache";
   clearBtn.style.cssText =
-    "flex:1;padding:8px;border-radius:4px;background:#555;color:#fff;cursor:pointer;border:none;";
+    "flex:1;padding:8px;border-radius:4px;background:#555;color:#fff;";
   clearBtn.addEventListener("click", async () => {
     const req = indexedDB.deleteDatabase("IKCache");
     req.onsuccess = () => {
@@ -448,25 +448,12 @@ function injectWidget(examples) {
 
   let index = 0;
 
-  function makeArrow(label, onClick) {
-    const btn = document.createElement("button");
-    btn.textContent = label;
-    btn.style.cssText = "width:45px;height:35px;font-size:14px;";
-    btn.addEventListener("click", onClick);
-    return btn;
-  }
-
   const widget = document.createElement("div");
   widget.id = "ik-container";
-  widget.style.cssText = `text-align:center;margin:8px 0;font-family:inherit;width:${settings.imageWidth + 100}px;`;
-
-  const settingsBtn = document.createElement("button");
-  settingsBtn.textContent = "⚙";
-  settingsBtn.style.cssText = "float:right;font-size:1rem;color:#888;";
-  settingsBtn.addEventListener("click", openSettingsMenu);
-  widget.appendChild(settingsBtn);
+  widget.style.cssText = "margin:8px 0;font-family:inherit;";
 
   const content = document.createElement("div");
+  content.style.cssText = `width:${settings.imageWidth}px;text-align:center;`;
 
   function renderContent() {
     content.innerHTML = "";
@@ -477,38 +464,54 @@ function injectWidget(examples) {
     if (imageUrl) {
       const img = document.createElement("img");
       img.src = imageUrl;
-      img.style.cssText = `width:${settings.imageWidth}px;max-width:100%;border-radius:4px;display:block;margin:0 auto;cursor:pointer;margin-top:6px;`;
+      img.style.cssText = `width:${settings.imageWidth}px;max-width:100%;`;
       img.onerror = () => (img.style.display = "none");
       img.addEventListener("click", () => playAudio(soundUrl));
       content.appendChild(img);
     }
 
+    // bottom meta bar: speaker · counter · gear
+    const metaBar = document.createElement("div");
+    metaBar.style.cssText =
+      "display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;";
+
     if (soundUrl) {
       const speaker = document.createElement("button");
+      speaker.className = "ik-speaker";
       speaker.textContent = "🔊";
-      speaker.style.cssText = "margin-top:8px;font-size:1.2rem;";
       speaker.addEventListener("click", () => playAudio(soundUrl));
-      content.appendChild(speaker);
+      metaBar.appendChild(speaker);
     }
+
+    const counter = document.createElement("span");
+    counter.textContent = `${index + 1} / ${examples.length}`;
+    counter.style.cssText =
+      "font-size:72%;color:var(--subsection-label-color,#666);";
+    metaBar.appendChild(counter);
+
+    const settingsBtn = document.createElement("button");
+    settingsBtn.className = "ik-gear";
+    settingsBtn.textContent = "⚙";
+    settingsBtn.addEventListener("click", openSettingsMenu);
+    metaBar.appendChild(settingsBtn);
+
+    content.appendChild(metaBar);
 
     if (ex.sentence) {
       const sent = document.createElement("div");
       sent.textContent = ex.sentence;
-      sent.style.cssText = "margin-top:8px;font-size:120%;color:#ddd;";
+      sent.style.cssText =
+        "margin-top:6px;font-size:110%;color:var(--text-color,#ddd);line-height:1.4;";
       content.appendChild(sent);
     }
 
     if (settings.showTranslation && ex.translation) {
       const trans = document.createElement("div");
       trans.textContent = ex.translation;
-      trans.style.cssText = "margin-top:4px;font-size:85%;color:#888;";
+      trans.style.cssText =
+        "margin-top:3px;font-size:82%;color:var(--subsection-label-color,#888);";
       content.appendChild(trans);
     }
-
-    const counter = document.createElement("div");
-    counter.textContent = `${index + 1} / ${examples.length}`;
-    counter.style.cssText = "margin-top:6px;font-size:75%;color:#666;";
-    content.appendChild(counter);
 
     leftBtn.disabled = index === 0;
     rightBtn.disabled = index === examples.length - 1;
@@ -516,7 +519,10 @@ function injectWidget(examples) {
     if (settings.autoplay) playAudio(soundUrl);
   }
 
-  const leftBtn = makeArrow("←", () => {
+  const leftBtn = document.createElement("button");
+  leftBtn.className = "ik-arrow";
+  leftBtn.textContent = "←";
+  leftBtn.addEventListener("click", () => {
     if (index > 0) {
       stopAudio();
       index--;
@@ -524,7 +530,10 @@ function injectWidget(examples) {
     }
   });
 
-  const rightBtn = makeArrow("→", () => {
+  const rightBtn = document.createElement("button");
+  rightBtn.className = "ik-arrow";
+  rightBtn.textContent = "→";
+  rightBtn.addEventListener("click", () => {
     if (index < examples.length - 1) {
       stopAudio();
       index++;
@@ -532,9 +541,9 @@ function injectWidget(examples) {
     }
   });
 
+  // arrows sit beside the content, vertically centered
   const row = document.createElement("div");
-  row.style.cssText =
-    "display:flex;align-items:center;justify-content:center;gap:8px;";
+  row.style.cssText = "display:flex;align-items:center;gap:8px;";
   row.append(leftBtn, content, rightBtn);
   widget.appendChild(row);
 
@@ -549,17 +558,17 @@ function injectWidget(examples) {
     const sideWrapper = document.createElement("div");
     sideWrapper.style.cssText = "display:flex;align-items:flex-start;gap:24px;";
 
-    const rightCol = document.createElement("div");
-    rightCol.style.flex = "1";
-    rightCol.appendChild(meanings);
+    const leftCol = document.createElement("div");
+    leftCol.style.flex = "1";
+    leftCol.appendChild(meanings);
 
     const pitchAccent = document.querySelector(".subsection-pitch-accent");
     const composedOf = document.querySelector(".subsection-composed-of-kanji");
-    if (composedOf) rightCol.appendChild(composedOf);
-    if (pitchAccent) rightCol.appendChild(pitchAccent);
+    if (composedOf) leftCol.appendChild(composedOf);
+    if (pitchAccent) leftCol.appendChild(pitchAccent);
 
-    sideWrapper.appendChild(widget);
-    sideWrapper.appendChild(rightCol);
+    sideWrapper.appendChild(leftCol); // meanings LEFT
+    sideWrapper.appendChild(widget); // widget RIGHT
 
     const dynDiv = document.createElement("div");
     dynDiv.id = "ik-dynamic";
