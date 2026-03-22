@@ -153,7 +153,21 @@ async function fetchExamples(vocab) {
     return [];
   }
 }
+async function playAudio(soundUrl) {
+  if (!soundUrl) return;
+  console.log(soundUrl);
 
+  const res = await fetch(soundUrl);
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  console.log(blob);
+
+  const audio = new Audio(blobUrl);
+  console.log(blobUrl);
+  audio.volume = 0.8;
+  audio.play();
+  audio.onended = () => URL.revokeObjectURL(blobUrl); // revoke slot for next audio to come in?
+}
 // widget UI
 function injectWidget(examples) {
   document.getElementById("ik-widget")?.remove();
@@ -189,6 +203,15 @@ function injectWidget(examples) {
         "max-width:400px;border-radius:4px;display:block;margin:0 auto;cursor:pointer;margin-top:6px;";
       img.onerror = () => (img.style.display = "none");
       content.appendChild(img);
+      //      img.addEventListener("click", () => playAudio(soundUrl));
+    }
+    if (soundUrl) {
+      const speaker = document.createElement("button");
+      speaker.textContent = "🔊";
+      speaker.style.cssText =
+        "margin-top:8px;font-size:1.2rem;background:none;border:none;cursor:pointer;";
+      speaker.addEventListener("click", () => playAudio(soundUrl));
+      content.appendChild(speaker);
     }
 
     if (ex.sentence) {
