@@ -147,6 +147,10 @@ async function fetchExamples(vocab) {
     const examples = json.examples || [];
     console.log("[IK] Extracted Examples Array:", examples);
 
+    cacheSet(vocab, examples).catch((e) =>
+      console.warn("[IK] cache w failed", e),
+    );
+
     return examples;
   } catch (err) {
     console.error("[IK] Fetch failed:", err);

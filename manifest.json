@@ -3,6 +3,18 @@
   "name": "JPDB ImmersionKit",
   "version": "0.3.0",
   "description": "ImmersionKit examples on jpdb.io",
+  "icons": {
+    "16": "fav.png",
+    "48": "fav.png",
+    "128": "fav.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "fav.png",
+      "48": "fav.png",
+      "128": "fav.png"
+    }
+  },
   "host_permissions": [
     "https://jpdb.io/*",
     "https://apiv2.immersionkit.com/*",
